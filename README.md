@@ -22,6 +22,8 @@ pip install -r requirements.txt
 ## Переменные окружения
 
 - `TELEGRAM_TOKEN` — токен вашего бота (получить у **BotFather** в Telegram)
+- `YTDLP_COOKIES` — содержимое cookies.txt для YouTube, если видео требует вход или подтверждение
+- `SUPPORT_BOT` — имя support-бота для ссылки в /help
 
 ## Запуск локально
 
@@ -99,9 +101,11 @@ git commit -m "Initial commit"
 2. Нажмите **"New Project"** → **"Deploy from GitHub repo"** (или загрузите напрямую)
 3. Выберите репо или загрузите файлы
 4. Railway автоматически обнаружит `Procfile`
-5. Добавьте переменную окружения:
+5. Добавьте переменные окружения:
    - Зайдите в **Variables** (⚙️)
    - Добавьте `TELEGRAM_TOKEN = ВАШ_ТОКЕН`
+   - (опционально) добавьте `SUPPORT_BOT = support_bot_username`
+   - (если нужны заблокированные видео) добавьте `YTDLP_COOKIES = <содержимое cookies.txt>`
 6. Нажмите **Deploy** — бот запустится!
 
 ### Альтернатива: Render.com

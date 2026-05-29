@@ -22,6 +22,9 @@ DB_PATH = 'history.db'
 DOWNLOADS_DIR = 'downloads'
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
+YTDLP_COOKIES = os.getenv('YTDLP_COOKIES')
+YTDLP_PROXY = os.getenv('YTDLP_PROXY')
+
 URL_RE = re.compile(r'https?://\S+')
 
 
@@ -96,14 +99,17 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         support_line = f"\nПоддержка / Support: {s}"
 
     msg = f'''📌 Как пользоваться:
-1. Отправьте ссылку (YouTube, Instagram, TikTok, etc.)
+1. Отправьте ссылку (YouTube, Instagram, TikTok и др.)
 2. Выберите качество:
-   ⚡ 360p — самое быстрое, низкое качество
-   📹 720p — оптимально, среднее качество
-   🎬 HD — максимальное качество (может быть медленнее)
+   🟢 144p — самый лёгкий, лучше для длинных видео
+   ⚡ 240p — быстро, вероятно меньше 50MB
+   📹 360p — нормальное качество
+   🎬 HD — лучшее качество, может быть медленнее
 3. Ждите загрузки 📥
 
 ⚠️ Лимит Telegram: макс 50MB за раз{support_line}
+
+Для видео с блокировкой YouTube используйте переменную `YTDLP_COOKIES` в Railway и вставьте туда содержимое cookies.txt из браузера.
 '''
     await update.message.reply_text(msg)
 
@@ -135,11 +141,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     keyboard = [
         [
-            InlineKeyboardButton("⚡ 360p (быстро)", callback_data=f'quality_360_{rowid}'),
-            InlineKeyboardButton("📹 720p (обычно)", callback_data=f'quality_720_{rowid}'),
+            InlineKeyboardButton("🟢 144p (мини)", callback_data=f'quality_144_{rowid}'),
+            InlineKeyboardButton("⚡ 240p (быстро)", callback_data=f'quality_240_{rowid}'),
         ],
         [
-            InlineKeyboardButton("🎬 HD (лучше, медленнее)", callback_data=f'quality_hd_{rowid}'),
+            InlineKeyboardButton("📹 360p (обычно)", callback_data=f'quality_360_{rowid}'),
+            InlineKeyboardButton("🎬 HD (лучше)", callback_data=f'quality_hd_{rowid}'),
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -176,7 +183,9 @@ async def download_and_send(url, query, context: ContextTypes.DEFAULT_TYPE, rowi
     tempdir = tempfile.mkdtemp(dir=DOWNLOADS_DIR)
     
     quality_formats = {
-        '360': 'worst[ext=mp4]/worst',
+        '144': 'worst[height<=144][ext=mp4]/worst',
+        '240': 'worst[height<=240][ext=mp4]/worst',
+        '360': 'worst[height<=360][ext=mp4]/worst',
         '720': 'best[height<=720][ext=mp4]/best[height<=720]/best[ext=mp4]',
         'hd': 'best[ext=mp4]/best'
     }
@@ -190,6 +199,17 @@ async def download_and_send(url, query, context: ContextTypes.DEFAULT_TYPE, rowi
         'http_chunk_size': 1024 * 1024,
         'throttledratelimit': 100 * 1024,
     }
+
+    if YTDLP_COOKIES:
+        cookies_path = os.path.join(tempdir, 'cookies.txt')
+        with open(cookies_path, 'w', encoding='utf-8') as cookie_file:
+            cookie_file.write(YTDLP_COOKIES)
+        ydl_opts['cookiefile'] = cookies_path
+        logger.info('Using cookies from YTDLP_COOKIES')
+
+    if YTDLP_PROXY:
+        ydl_opts['proxy'] = YTDLP_PROXY
+        logger.info('Using proxy from YTDLP_PROXY')
     
     try:
         logger.info(f'Downloading {url} with quality {quality}')
@@ -211,12 +231,25 @@ async def download_and_send(url, query, context: ContextTypes.DEFAULT_TYPE, rowi
         title = info.get('title', 'Video')
         
         if size > 50 * 1024 * 1024:
+            direct_url = info.get('url') or None
+            if not direct_url and isinstance(info.get('formats'), list):
+                for fmt in reversed(info['formats']):
+                    if fmt.get('url'):
+                        direct_url = fmt['url']
+                        break
+
+            message_text = f'⚠️ Файл {size // (1024*1024)}MB слишком большой для отправки по Telegram (лимит 50MB).'
+            if direct_url:
+                message_text += f'\nСсылка для прямой загрузки:\n{direct_url}'
+            else:
+                message_text += '\nПопробуйте найти файл по ссылке в браузере или использовать качество 360p.'
+
             await context.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
-                text=f'⚠️ Файл {size // (1024*1024)}MB слишком большой (лимит 50MB). Попробуйте 360p.'
+                text=message_text
             )
-            update_history(rowid, 'failed', quality=quality)
+            update_history(rowid, 'too_large', quality=quality)
             return
         
         await context.bot.edit_message_text(
