@@ -1,0 +1,8 @@
+runtime.txt
+*.pyc
+__pycache__/
+.env
+history.db
+downloads/
+venv/
+.DS_Store
