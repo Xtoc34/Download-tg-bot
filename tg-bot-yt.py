@@ -301,9 +301,14 @@ async def download_and_send(url, query, context: ContextTypes.DEFAULT_TYPE, rowi
         'outtmpl': os.path.join(tempdir, '%(id)s.%(ext)s'),
         'noplaylist': True,
         'quiet': False,
+        'no_warnings': True,
         'socket_timeout': 60,
         'http_chunk_size': 1024 * 1024,
         'throttledratelimit': 100 * 1024,
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+            'Referer': 'https://www.youtube.com/'
+        },
     }
 
     if YTDLP_COOKIES:
@@ -387,7 +392,7 @@ async def download_and_send(url, query, context: ContextTypes.DEFAULT_TYPE, rowi
         update_history(rowid, 'failed', quality=quality)
         
         error_msg = str(e).lower()
-        if 'sign in to confirm' in error_msg or 'use --cookies' in error_msg or 'cookie' in error_msg:
+        if 'sign in to confirm' in error_msg or 'use --cookies' in error_msg or 'login required' in error_msg or ('cookie' in error_msg and 'youtube' in error_msg):
             msg = t(query.from_user.id, 'error_requires_cookies')
         elif 'timed out' in error_msg or 'timeout' in error_msg:
             msg = t(query.from_user.id, 'error_timeout')
