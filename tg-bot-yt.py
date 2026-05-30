@@ -180,7 +180,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def language_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     keyboard = [
-        [InlineKeyboardButton('🇷🇺 Русский', callback_data=f'lang_ru_{user.id}')],
+        [InlineKeyboardButton('Русский', callback_data=f'lang_ru_{user.id}')],
         [InlineKeyboardButton('🇬🇧 English', callback_data=f'lang_en_{user.id}')],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
