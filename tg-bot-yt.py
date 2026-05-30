@@ -5,7 +5,9 @@ import sqlite3
 import logging
 import tempfile
 import shutil
+import secrets
 from datetime import datetime
+from functools import wraps
 
 from yt_dlp import YoutubeDL
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -21,6 +23,9 @@ logger = logging.getLogger(__name__)
 DB_PATH = 'history.db'
 DOWNLOADS_DIR = 'downloads'
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+
+# Администраторы бота (добавьте свои ID через запятую)
+ADMIN_IDS = [int(x) for x in os.getenv('ADMIN_IDS', '').split(',') if x.strip().isdigit()]
 
 YTDLP_COOKIES = os.getenv('YTDLP_COOKIES')
 YTDLP_PROXY = os.getenv('YTDLP_PROXY')
@@ -44,7 +49,23 @@ def init_db():
     )''')
     cur.execute('''CREATE TABLE IF NOT EXISTS user_settings (
         user_id INTEGER PRIMARY KEY,
-        language TEXT DEFAULT 'ru'
+        language TEXT DEFAULT 'ru',
+        is_authorized INTEGER DEFAULT 0,
+        first_seen TEXT,
+        last_active TEXT,
+        request_count INTEGER DEFAULT 0
+    )''')
+    cur.execute('''CREATE TABLE IF NOT EXISTS access_codes (
+        code TEXT PRIMARY KEY,
+        created_at TEXT,
+        used_by INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1
+    )''')
+    cur.execute('''CREATE TABLE IF NOT EXISTS user_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        command TEXT,
+        ts TEXT
     )''')
     conn.commit()
     conn.close()
@@ -65,6 +86,130 @@ def set_user_language(user_id, lang):
     cur.execute('INSERT OR REPLACE INTO user_settings (user_id, language) VALUES (?, ?)', (user_id, lang))
     conn.commit()
     conn.close()
+
+
+def is_user_authorized(user_id):
+    """Проверка, авторизован ли пользователь"""
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute('SELECT is_authorized FROM user_settings WHERE user_id = ?', (user_id,))
+    row = cur.fetchone()
+    conn.close()
+    return row[0] == 1 if row else False
+
+
+def authorize_user(user_id, username=None):
+    """Авторизация пользователя"""
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    now = datetime.utcnow().isoformat()
+    cur.execute('''INSERT OR REPLACE INTO user_settings 
+                   (user_id, language, is_authorized, first_seen, last_active, request_count) 
+                   VALUES (?, COALESCE((SELECT language FROM user_settings WHERE user_id = ?), 'ru'), 1, 
+                   COALESCE((SELECT first_seen FROM user_settings WHERE user_id = ?), ?), ?, 
+                   COALESCE((SELECT request_count FROM user_settings WHERE user_id = ?), 0))''',
+                (user_id, user_id, user_id, now, now, user_id))
+    conn.commit()
+    conn.close()
+
+
+def log_user_request(user_id, command):
+    """Логирование запроса пользователя"""
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    now = datetime.utcnow().isoformat()
+    cur.execute('INSERT INTO user_requests (user_id, command, ts) VALUES (?, ?, ?)', (user_id, command, now))
+    cur.execute('UPDATE user_settings SET last_active = ?, request_count = request_count + 1 WHERE user_id = ?', (now, user_id))
+    conn.commit()
+    conn.close()
+
+
+def create_access_code(code=None):
+    """Создание кода доступа"""
+    if not code:
+        code = secrets.token_urlsafe(8).upper()
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    now = datetime.utcnow().isoformat()
+    cur.execute('INSERT OR IGNORE INTO access_codes (code, created_at, is_active) VALUES (?, ?, 1)', (code, now))
+    conn.commit()
+    conn.close()
+    return code
+
+
+def validate_access_code(code):
+    """Проверка кода доступа"""
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute('SELECT is_active FROM access_codes WHERE code = ?', (code,))
+    row = cur.fetchone()
+    if row and row[0] == 1:
+        cur.execute('UPDATE access_codes SET used_by = used_by + 1 WHERE code = ?', (code,))
+        conn.commit()
+        conn.close()
+        return True
+    conn.close()
+    return False
+
+
+def get_all_access_codes():
+    """Получение всех кодов доступа"""
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute('SELECT code, created_at, used_by, is_active FROM access_codes ORDER BY created_at DESC')
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def deactivate_access_code(code):
+    """Деактивация кода доступа"""
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute('UPDATE access_codes SET is_active = 0 WHERE code = ?', (code,))
+    conn.commit()
+    conn.close()
+
+
+def get_user_stats():
+    """Получение статистики пользователей"""
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    
+    # Общая статистика
+    cur.execute('SELECT COUNT(*) FROM user_settings WHERE is_authorized = 1')
+    total_users = cur.fetchone()[0]
+    
+    cur.execute('SELECT COUNT(*) FROM user_settings')
+    total_registered = cur.fetchone()[0]
+    
+    # Активные за сегодня
+    today = datetime.utcnow().date().isoformat()
+    cur.execute('SELECT COUNT(DISTINCT user_id) FROM user_requests WHERE ts LIKE ?', (f'{today}%',))
+    active_today = cur.fetchone()[0]
+    
+    # Топ пользователей по запросам
+    cur.execute('''SELECT user_id, username, request_count, last_active 
+                   FROM user_settings 
+                   WHERE is_authorized = 1 
+                   ORDER BY request_count DESC LIMIT 10''')
+    top_users = cur.fetchall()
+    
+    # Статистика по командам
+    cur.execute('''SELECT command, COUNT(*) as count 
+                   FROM user_requests 
+                   GROUP BY command 
+                   ORDER BY count DESC LIMIT 10''')
+    command_stats = cur.fetchall()
+    
+    conn.close()
+    return {
+        'total_users': total_users,
+        'total_registered': total_registered,
+        'active_today': active_today,
+        'top_users': top_users,
+        'command_stats': command_stats
+    }
 
 
 # Translations dictionary
@@ -92,6 +237,14 @@ TRANSLATIONS = {
         'quality_hd': '🎬 HD (лучше)',
         'quality_audio': '🎵 Аудио (m4a)',
         'error_requires_cookies': '🔐 Видео требует вход в аккаунт. Добавьте YTDLP_COOKIES в переменные окружения, чтобы скачать.',
+        'access_required': '🔒 Доступ к боту ограничен!\n\nДля получения полного доступа отправьте код приглашения:\n/code <ваш_код>\n\nПример: /code ABC123',
+        'code_accepted': '✅ Код принят! Теперь у вас есть полный доступ ко всем функциям бота.',
+        'code_invalid': '❌ Неверный код доступа.',
+        'admin_stats': '📊 Статистика бота:',
+        'admin_codes': '📝 Активные коды доступа:',
+        'code_created': '✅ Создан новый код доступа: {code}',
+        'code_deactivated': '✅ Код доступа деактивирован.',
+        'not_admin': '❌ У вас нет прав администратора.',
     },
     'en': {
         'hello': 'Hello! 👋 I download videos from YouTube, Instagram, TikTok and other sites.\n\nJust send me a link, choose quality — and get your video!\n\nCommands:\n/history — view download history\n/help — help\n/language — choose language',
@@ -116,6 +269,14 @@ TRANSLATIONS = {
         'quality_hd': '🎬 HD (better)',
         'quality_audio': '🎵 Audio (m4a)',
         'error_requires_cookies': '🔐 This video requires login. Add YTDLP_COOKIES env variable to download.',
+        'access_required': '🔒 Bot access is restricted!\n\nTo get full access, send your invitation code:\n/code <your_code>\n\nExample: /code ABC123',
+        'code_accepted': '✅ Code accepted! You now have full access to all bot features.',
+        'code_invalid': '❌ Invalid access code.',
+        'admin_stats': '📊 Bot statistics:',
+        'admin_codes': '📝 Active access codes:',
+        'code_created': '✅ New access code created: {code}',
+        'code_deactivated': '✅ Access code deactivated.',
+        'not_admin': '❌ You do not have admin privileges.',
     }
 }
 
@@ -125,6 +286,27 @@ def t(user_id, key, **kwargs):
     lang = get_user_language(user_id)
     text = TRANSLATIONS.get(lang, TRANSLATIONS['ru']).get(key, key)
     return text.format(**kwargs) if kwargs else text
+
+
+def requires_auth(func):
+    """Декоратор для проверки авторизации пользователя"""
+    @wraps(func)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        user_id = update.effective_user.id
+        
+        # Админы всегда имеют доступ
+        if user_id in ADMIN_IDS:
+            return await func(update, context, *args, **kwargs)
+        
+        if not is_user_authorized(user_id):
+            await update.message.reply_text(t(user_id, 'access_required'))
+            return
+        
+        # Логируем запрос
+        log_user_request(user_id, update.message.text if update.message else 'callback')
+        
+        return await func(update, context, *args, **kwargs)
+    return wrapper
 
 
 def add_history(user_id, username, url, status='pending', filename=None, quality=None):
@@ -162,10 +344,18 @@ def is_url(text: str) -> bool:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    msg = t(user.id, 'hello')
-    await update.message.reply_text(msg)
+    
+    # Если пользователь уже авторизован, показываем приветствие
+    if is_user_authorized(user.id) or user.id in ADMIN_IDS:
+        msg = t(user.id, 'hello')
+        await update.message.reply_text(msg)
+    else:
+        # Показываем сообщение о необходимости кода
+        msg = t(user.id, 'access_required')
+        await update.message.reply_text(msg)
 
 
+@requires_auth
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     support = os.getenv('SUPPORT_BOT')
@@ -184,6 +374,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def language_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    # Эта команда доступна всем (даже неавторизованным)
     keyboard = [
         [InlineKeyboardButton('Русский', callback_data=f'lang_ru_{user.id}')],
         [InlineKeyboardButton('🇬🇧 English', callback_data=f'lang_en_{user.id}')],
@@ -213,6 +404,7 @@ async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(t(user_id, 'language_set'))
 
 
+@requires_auth
 async def history_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     rows = get_history_for_user(user.id)
@@ -230,6 +422,7 @@ async def history_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f'{t(user.id, "history_title")}\n\n{text}')
 
 
+@requires_auth
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     user = update.effective_user
@@ -260,6 +453,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def quality_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    
+    # Проверяем авторизацию
+    user_id = query.from_user.id
+    if not is_user_authorized(user_id) and user_id not in ADMIN_IDS:
+        await query.answer(t(user_id, 'access_required'), show_alert=True)
+        return
     
     parts = query.data.split('_')
     quality = parts[1]
@@ -410,6 +609,117 @@ async def download_and_send(url, query, context: ContextTypes.DEFAULT_TYPE, rowi
             logger.warning(f'Failed to clean temp dir: {e}')
 
 
+async def code_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка команды /code для ввода кода доступа"""
+    user_id = update.effective_user.id
+    
+    if is_user_authorized(user_id):
+        await update.message.reply_text(t(user_id, 'code_accepted'))
+        return
+    
+    if not context.args:
+        await update.message.reply_text(t(user_id, 'access_required'))
+        return
+    
+    code = context.args[0].upper()
+    
+    if validate_access_code(code):
+        authorize_user(user_id, update.effective_user.username)
+        await update.message.reply_text(t(user_id, 'code_accepted'))
+        
+        # Отправляем приветственное сообщение после авторизации
+        msg = t(user_id, 'hello')
+        await update.message.reply_text(msg)
+    else:
+        await update.message.reply_text(t(user_id, 'code_invalid'))
+
+
+async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда для просмотра статистики (только для админов)"""
+    user_id = update.effective_user.id
+    
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text(t(user_id, 'not_admin'))
+        return
+    
+    stats = get_user_stats()
+    
+    stats_text = f"""{t(user_id, 'admin_stats')}
+
+👥 Пользователи:
+   Всего авторизовано: {stats['total_users']}
+   Зарегистрировано: {stats['total_registered']}
+   Активных сегодня: {stats['active_today']}
+
+🔥 Топ пользователей по запросам:"""
+    
+    for user_data in stats['top_users']:
+        uid, username, count, last_active = user_data
+        username_str = username if username else f"user_{uid}"
+        stats_text += f"\n   @{username_str}: {count} запросов"
+    
+    stats_text += "\n\n📊 Популярные команды:"
+    for cmd, count in stats['command_stats']:
+        stats_text += f"\n   {cmd}: {count}"
+    
+    await update.message.reply_text(stats_text)
+
+
+async def create_code_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Создание нового кода доступа (только для админов)"""
+    user_id = update.effective_user.id
+    
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text(t(user_id, 'not_admin'))
+        return
+    
+    # Генерируем код или используем переданный
+    code = context.args[0].upper() if context.args else None
+    new_code = create_access_code(code)
+    
+    await update.message.reply_text(t(user_id, 'code_created', code=new_code))
+
+
+async def list_codes_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Список всех кодов доступа (только для админов)"""
+    user_id = update.effective_user.id
+    
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text(t(user_id, 'not_admin'))
+        return
+    
+    codes = get_all_access_codes()
+    
+    if not codes:
+        await update.message.reply_text("Коды доступа не созданы.")
+        return
+    
+    codes_text = f"{t(user_id, 'admin_codes')}\n\n"
+    for code, created_at, used_by, is_active in codes:
+        status = "✅ Активен" if is_active else "❌ Деактивирован"
+        codes_text += f"Код: `{code}`\nСоздан: {created_at[:10]}\nИспользован: {used_by} раз(а)\nСтатус: {status}\n\n"
+    
+    await update.message.reply_text(codes_text)
+
+
+async def deactivate_code_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Деактивация кода доступа (только для админов)"""
+    user_id = update.effective_user.id
+    
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text(t(user_id, 'not_admin'))
+        return
+    
+    if not context.args:
+        await update.message.reply_text("Используйте: /deactivate_code <код>")
+        return
+    
+    code = context.args[0].upper()
+    deactivate_access_code(code)
+    
+    await update.message.reply_text(t(user_id, 'code_deactivated'))
+
+
 def main():
     init_db()
     token = os.getenv('TELEGRAM_TOKEN')
@@ -417,12 +727,38 @@ def main():
         print('❌ Please set TELEGRAM_TOKEN environment variable')
         return
     
+    # Проверяем, есть ли уже коды доступа, если нет - создаем первый
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute('SELECT COUNT(*) FROM access_codes')
+    code_count = cur.fetchone()[0]
+    conn.close()
+    
+    if code_count == 0:
+        if ADMIN_IDS:
+            # Если есть админы, создаем код для них
+            default_code = create_access_code('ADMIN2026')
+            logger.info(f'📝 Admin access code created: {default_code}')
+            print(f'📝 Admin access code: {default_code}')
+            print(f'📝 Use /create_code YOURCODE to create more codes')
+        else:
+            # Если нет админов, создаем код по умолчанию
+            default_code = create_access_code('WELCOME123')
+            logger.info(f'📝 Default access code created: {default_code}')
+            print(f'📝 Default access code: {default_code}')
+            print(f'⚠️ Set ADMIN_IDS to your Telegram user ID for admin access')
+    
     app = ApplicationBuilder().token(token).build()
     
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('help', help_cmd))
     app.add_handler(CommandHandler('language', language_cmd))
     app.add_handler(CommandHandler('history', history_cmd))
+    app.add_handler(CommandHandler('code', code_cmd))
+    app.add_handler(CommandHandler('stats', stats_cmd))
+    app.add_handler(CommandHandler('create_code', create_code_cmd))
+    app.add_handler(CommandHandler('list_codes', list_codes_cmd))
+    app.add_handler(CommandHandler('deactivate_code', deactivate_code_cmd))
     app.add_handler(CallbackQueryHandler(language_callback, pattern=r'lang_'))
     app.add_handler(CallbackQueryHandler(quality_callback, pattern=r'quality_'))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
@@ -438,4 +774,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
