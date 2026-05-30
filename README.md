@@ -24,6 +24,7 @@ pip install -r requirements.txt
 - `TELEGRAM_TOKEN` — токен вашего бота (получить у **BotFather** в Telegram)
 - `YTDLP_COOKIES` — содержимое cookies.txt для YouTube, если видео требует вход или подтверждение
 - `SUPPORT_BOT` — имя support-бота для ссылки в /help
+- `WEBHOOK_URL` — полный HTTPS URL, если бот запускается в контейнере/на Railway и должен использовать webhook вместо polling
 
 ## Запуск локально
 

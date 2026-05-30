@@ -24,6 +24,7 @@ os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
 YTDLP_COOKIES = os.getenv('YTDLP_COOKIES')
 YTDLP_PROXY = os.getenv('YTDLP_PROXY')
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 
 URL_RE = re.compile(r'https?://\S+')
 
@@ -402,8 +403,13 @@ def main():
     app.add_handler(CallbackQueryHandler(quality_callback, pattern=r'quality_'))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    logger.info('🤖 Bot started successfully!')
-    app.run_polling()
+    port = int(os.getenv('PORT', '8443'))
+    if WEBHOOK_URL:
+        logger.info(f'🤖 Starting webhook mode on port {port} with URL {WEBHOOK_URL}')
+        app.run_webhook(listen='0.0.0.0', port=port, webhook_url=WEBHOOK_URL)
+    else:
+        logger.info('🤖 Starting polling mode')
+        app.run_polling()
 
 
 if __name__ == '__main__':
