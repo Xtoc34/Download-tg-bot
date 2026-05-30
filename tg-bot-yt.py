@@ -72,7 +72,7 @@ TRANSLATIONS = {
     'ru': {
         'hello': 'Привет! 👋 Я скачиваю видео с YouTube, Instagram, TikTok и других сайтов.\n\nПросто отправьте мне ссылку, выберите качество — и получите видео!\n\nКоманды:\n/history — просмотреть историю загрузок\n/help — справка\n/language — выбрать язык',
         'help_intro': '📌 Как пользоваться:',
-        'help_text': '1. Отправьте ссылку (YouTube, Instagram, TikTok и др.)\n2. Выберите качество:\n   🟢 144p — самый лёгкий\n   ⚡ 240p — быстро\n   📹 360p — нормальное\n   🎬 HD — лучшее\n3. Ждите загрузки 📥',
+        'help_text': '1. Отправьте ссылку (YouTube, Instagram, TikTok и др.)\n2. Выберите качество:\n   🟢 144p — самый лёгкий\n   ⚡ 240p — быстро\n   📹 360p — нормальное\n   🎬 HD — лучшее\n   🎵 Аудио — только звук\n3. Ждите загрузки 📥',
         'limit': '⚠️ Лимит Telegram: макс 50MB за раз',
         'support_text': 'Поддержка / Support',
         'choose_quality': 'Выберите качество:',
@@ -90,11 +90,13 @@ TRANSLATIONS = {
         'quality_240': '⚡ 240p (быстро)',
         'quality_360': '📹 360p (обычно)',
         'quality_hd': '🎬 HD (лучше)',
+        'quality_audio': '🎵 Аудио (m4a)',
+        'error_requires_cookies': '🔐 Видео требует вход в аккаунт. Добавьте YTDLP_COOKIES в переменные окружения, чтобы скачать.',
     },
     'en': {
         'hello': 'Hello! 👋 I download videos from YouTube, Instagram, TikTok and other sites.\n\nJust send me a link, choose quality — and get your video!\n\nCommands:\n/history — view download history\n/help — help\n/language — choose language',
         'help_intro': '📌 How to use:',
-        'help_text': '1. Send a link (YouTube, Instagram, TikTok, etc.)\n2. Choose quality:\n   🟢 144p — smallest\n   ⚡ 240p — fast\n   📹 360p — normal\n   🎬 HD — best\n3. Wait for upload 📥',
+        'help_text': '1. Send a link (YouTube, Instagram, TikTok, etc.)\n2. Choose quality:\n   🟢 144p — smallest\n   ⚡ 240p — fast\n   📹 360p — normal\n   🎬 HD — best\n   🎵 Audio — audio only\n3. Wait for upload 📥',
         'limit': '⚠️ Telegram limit: max 50MB at a time',
         'support_text': 'Support / Поддержка',
         'choose_quality': 'Choose quality:',
@@ -112,6 +114,8 @@ TRANSLATIONS = {
         'quality_240': '⚡ 240p (fast)',
         'quality_360': '📹 360p (normal)',
         'quality_hd': '🎬 HD (better)',
+        'quality_audio': '🎵 Audio (m4a)',
+        'error_requires_cookies': '🔐 This video requires login. Add YTDLP_COOKIES env variable to download.',
     }
 }
 
@@ -220,7 +224,8 @@ async def history_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         rid, url, ts, status, filename, quality = r
         short_url = url[:40] + '...' if len(url) > 40 else url
         quality_str = quality if quality else '-'
-        lines.append(f'[{rid}] {status.upper()} | {quality_str}p\n{short_url}\n{ts[:10]}\n')
+        suffix = 'p' if quality_str and quality_str.isdigit() else ''
+        lines.append(f'[{rid}] {status.upper()} | {quality_str}{suffix}\n{short_url}\n{ts[:10]}\n')
     text = '\n'.join(lines[:15])
     await update.message.reply_text(f'{t(user.id, "history_title")}\n\n{text}')
 
@@ -243,6 +248,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [
             InlineKeyboardButton(t(user.id, 'quality_360'), callback_data=f'quality_360_{rowid}'),
             InlineKeyboardButton(t(user.id, 'quality_hd'), callback_data=f'quality_hd_{rowid}'),
+        ],
+        [
+            InlineKeyboardButton(t(user.id, 'quality_audio'), callback_data=f'quality_audio_{rowid}')
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -268,7 +276,8 @@ async def quality_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     url = row[0]
-    await query.edit_message_text(f'⏳ Скачиваю видео ({quality}p)...')
+    label = f'{quality}p' if quality != 'audio' else 'audio'
+    await query.edit_message_text(f'⏳ Скачиваю {"аудио" if quality == "audio" else "видео"} ({label})...')
     asyncio.create_task(download_and_send(url, query, context, rowid, quality))
 
 
@@ -282,8 +291,9 @@ async def download_and_send(url, query, context: ContextTypes.DEFAULT_TYPE, rowi
         '144': 'worst[height<=144][ext=mp4]/worst',
         '240': 'worst[height<=240][ext=mp4]/worst',
         '360': 'worst[height<=360][ext=mp4]/worst',
-        '720': 'best[height<=720][ext=mp4]/best[height<=720]/best[ext=mp4]',
-        'hd': 'best[ext=mp4]/best'
+        '720': 'best[height<=720][ext=mp4]/best[ext=mp4]',
+        'hd': 'best[ext=mp4]/best',
+        'audio': 'bestaudio[ext=m4a]/bestaudio/best'
     }
     
     ydl_opts = {
@@ -354,12 +364,19 @@ async def download_and_send(url, query, context: ContextTypes.DEFAULT_TYPE, rowi
             text=f'📤 Загружаю "{title[:30]}"... ({size // (1024*1024)}MB)'
         )
         
-        with open(filepath, 'rb') as video_file:
-            await context.bot.send_video(
-                chat_id=chat_id,
-                video=video_file,
-                caption=f'✅ {title[:60]}\n📊 {size // (1024*1024)}MB | {quality}p'
-            )
+        with open(filepath, 'rb') as media_file:
+            if quality == 'audio':
+                await context.bot.send_audio(
+                    chat_id=chat_id,
+                    audio=media_file,
+                    caption=f'✅ {title[:60]}\n📊 {size // (1024*1024)}MB | audio'
+                )
+            else:
+                await context.bot.send_video(
+                    chat_id=chat_id,
+                    video=media_file,
+                    caption=f'✅ {title[:60]}\n📊 {size // (1024*1024)}MB | {quality}p'
+                )
         
         update_history(rowid, 'done', os.path.basename(filepath), quality=quality)
         await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
@@ -370,12 +387,14 @@ async def download_and_send(url, query, context: ContextTypes.DEFAULT_TYPE, rowi
         update_history(rowid, 'failed', quality=quality)
         
         error_msg = str(e).lower()
-        if 'timed out' in error_msg or 'timeout' in error_msg:
-            msg = '⏱️ Истёк лимит времени. Попробуйте 360p или позже.'
+        if 'sign in to confirm' in error_msg or 'use --cookies' in error_msg or 'cookie' in error_msg:
+            msg = t(query.from_user.id, 'error_requires_cookies')
+        elif 'timed out' in error_msg or 'timeout' in error_msg:
+            msg = t(query.from_user.id, 'error_timeout')
         elif 'not available' in error_msg:
-            msg = '🔒 Видео недоступно (приватное, удалено или по геоблоку).'
+            msg = t(query.from_user.id, 'error_unavailable')
         else:
-            msg = f'❌ Ошибка: {str(e)[:80]}'
+            msg = f'❌ {t(query.from_user.id, "error_general", error=str(e)[:80])}'
         
         await context.bot.send_message(chat_id=chat_id, text=msg)
         
