@@ -41,8 +41,85 @@ def init_db():
         filename TEXT,
         quality TEXT
     )''')
+    cur.execute('''CREATE TABLE IF NOT EXISTS user_settings (
+        user_id INTEGER PRIMARY KEY,
+        language TEXT DEFAULT 'ru'
+    )''')
     conn.commit()
     conn.close()
+
+
+def get_user_language(user_id):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute('SELECT language FROM user_settings WHERE user_id = ?', (user_id,))
+    row = cur.fetchone()
+    conn.close()
+    return row[0] if row else 'ru'
+
+
+def set_user_language(user_id, lang):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute('INSERT OR REPLACE INTO user_settings (user_id, language) VALUES (?, ?)', (user_id, lang))
+    conn.commit()
+    conn.close()
+
+
+# Translations dictionary
+TRANSLATIONS = {
+    'ru': {
+        'hello': 'Привет! 👋 Я скачиваю видео с YouTube, Instagram, TikTok и других сайтов.\n\nПросто отправьте мне ссылку, выберите качество — и получите видео!\n\nКоманды:\n/history — просмотреть историю загрузок\n/help — справка\n/language — выбрать язык',
+        'help_intro': '📌 Как пользоваться:',
+        'help_text': '1. Отправьте ссылку (YouTube, Instagram, TikTok и др.)\n2. Выберите качество:\n   🟢 144p — самый лёгкий\n   ⚡ 240p — быстро\n   📹 360p — нормальное\n   🎬 HD — лучшее\n3. Ждите загрузки 📥',
+        'limit': '⚠️ Лимит Telegram: макс 50MB за раз',
+        'support_text': 'Поддержка / Support',
+        'choose_quality': 'Выберите качество:',
+        'empty_history': 'История пустая.',
+        'history_title': '📋 Ваша история (последние 15):',
+        'invalid_url': '❌ Пожалуйста, пришлите ссылку (YouTube, Instagram, TikTok и др.).',
+        'downloading': '⏳ Скачиваю видео ({quality}p)...',
+        'uploading': '📤 Загружаю "{title}"... ({size}MB)',
+        'file_too_large': '⚠️ Файл {size}MB слишком большой (лимит 50MB).\nСсылка для прямой загрузки:\n{url}',
+        'error_timeout': '⏱️ Истёк лимит времени. Попробуйте 360p или позже.',
+        'error_unavailable': '🔒 Видео недоступно (приватное, удалено или по геоблоку).',
+        'error_general': '❌ Ошибка: {error}',
+        'language_set': 'Язык изменён на Русский 🇷🇺',
+        'quality_144': '🟢 144p (мини)',
+        'quality_240': '⚡ 240p (быстро)',
+        'quality_360': '📹 360p (обычно)',
+        'quality_hd': '🎬 HD (лучше)',
+    },
+    'en': {
+        'hello': 'Hello! 👋 I download videos from YouTube, Instagram, TikTok and other sites.\n\nJust send me a link, choose quality — and get your video!\n\nCommands:\n/history — view download history\n/help — help\n/language — choose language',
+        'help_intro': '📌 How to use:',
+        'help_text': '1. Send a link (YouTube, Instagram, TikTok, etc.)\n2. Choose quality:\n   🟢 144p — smallest\n   ⚡ 240p — fast\n   📹 360p — normal\n   🎬 HD — best\n3. Wait for upload 📥',
+        'limit': '⚠️ Telegram limit: max 50MB at a time',
+        'support_text': 'Support / Поддержка',
+        'choose_quality': 'Choose quality:',
+        'empty_history': 'History is empty.',
+        'history_title': '📋 Your history (last 15):',
+        'invalid_url': '❌ Please send a link (YouTube, Instagram, TikTok, etc.).',
+        'downloading': '⏳ Downloading video ({quality}p)...',
+        'uploading': '📤 Uploading "{title}"... ({size}MB)',
+        'file_too_large': '⚠️ File {size}MB is too large (limit 50MB).\nDirect download link:\n{url}',
+        'error_timeout': '⏱️ Time limit exceeded. Try 360p or later.',
+        'error_unavailable': '🔒 Video unavailable (private, deleted or geo-blocked).',
+        'error_general': '❌ Error: {error}',
+        'language_set': 'Language changed to English 🇬🇧',
+        'quality_144': '🟢 144p (mini)',
+        'quality_240': '⚡ 240p (fast)',
+        'quality_360': '📹 360p (normal)',
+        'quality_hd': '🎬 HD (better)',
+    }
+}
+
+
+def t(user_id, key, **kwargs):
+    """Get translation for user's language"""
+    lang = get_user_language(user_id)
+    text = TRANSLATIONS.get(lang, TRANSLATIONS['ru']).get(key, key)
+    return text.format(**kwargs) if kwargs else text
 
 
 def add_history(user_id, username, url, status='pending', filename=None, quality=None):
@@ -79,46 +156,63 @@ def is_url(text: str) -> bool:
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = '''Привет! 👋 Я скачиваю видео с YouTube, Instagram, TikTok и других сайтов.
-
-Просто отправьте мне ссылку, выберите качество — и получите видео!
-
-Команды:
-/history — просмотреть историю загрузок
-/help — справка
-'''
+    user = update.effective_user
+    msg = t(user.id, 'hello')
     await update.message.reply_text(msg)
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
     support = os.getenv('SUPPORT_BOT')
     support_line = ''
     if support:
-        # support can be username with or without @
         s = support if support.startswith('@') else f'@{support}'
-        support_line = f"\nПоддержка / Support: {s}"
+        support_line = f"\n{t(user.id, 'support_text')}: {s}"
 
-    msg = f'''📌 Как пользоваться:
-1. Отправьте ссылку (YouTube, Instagram, TikTok и др.)
-2. Выберите качество:
-   🟢 144p — самый лёгкий, лучше для длинных видео
-   ⚡ 240p — быстро, вероятно меньше 50MB
-   📹 360p — нормальное качество
-   🎬 HD — лучшее качество, может быть медленнее
-3. Ждите загрузки 📥
+    msg = f'''{t(user.id, 'help_intro')}
+{t(user.id, 'help_text')}
 
-⚠️ Лимит Telegram: макс 50MB за раз{support_line}
-
-Для видео с блокировкой YouTube используйте переменную `YTDLP_COOKIES` в Railway и вставьте туда содержимое cookies.txt из браузера.
+{t(user.id, 'limit')}{support_line}
 '''
     await update.message.reply_text(msg)
+
+
+async def language_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    keyboard = [
+        [InlineKeyboardButton('🇷🇺 Русский', callback_data=f'lang_ru_{user.id}')],
+        [InlineKeyboardButton('🇬🇧 English', callback_data=f'lang_en_{user.id}')],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    current_lang = get_user_language(user.id)
+    msg = f'Current language / Текущий язык: {current_lang}\n\nChoose / Выберите:'
+    await update.message.reply_text(msg, reply_markup=reply_markup)
+
+
+async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    parts = query.data.split('_')
+    if len(parts) < 3:
+        await query.edit_message_text('Invalid language selection.')
+        return
+    lang = parts[1]
+    user_id = int(parts[2])
+    if query.from_user.id != user_id:
+        await query.answer('This button is not for you.', show_alert=True)
+        return
+    if lang not in TRANSLATIONS:
+        await query.edit_message_text('Invalid language.')
+        return
+    set_user_language(user_id, lang)
+    await query.edit_message_text(t(user_id, 'language_set'))
 
 
 async def history_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     rows = get_history_for_user(user.id)
     if not rows:
-        await update.message.reply_text('История пустая.')
+        await update.message.reply_text(t(user.id, 'empty_history'))
         return
     lines = []
     for r in rows:
@@ -127,30 +221,31 @@ async def history_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         quality_str = quality if quality else '-'
         lines.append(f'[{rid}] {status.upper()} | {quality_str}p\n{short_url}\n{ts[:10]}\n')
     text = '\n'.join(lines[:15])
-    await update.message.reply_text(f'📋 Ваша история (последние 15):\n\n{text}')
+    await update.message.reply_text(f'{t(user.id, "history_title")}\n\n{text}')
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
+    user = update.effective_user
+    
     if not is_url(text):
-        await update.message.reply_text('❌ Пожалуйста, пришлите ссылку (YouTube, Instagram, TikTok и др.).')
+        await update.message.reply_text(t(user.id, 'invalid_url'))
         return
     
-    user = update.effective_user
     rowid = add_history(user.id, user.username or '', text)
     
     keyboard = [
         [
-            InlineKeyboardButton("🟢 144p (мини)", callback_data=f'quality_144_{rowid}'),
-            InlineKeyboardButton("⚡ 240p (быстро)", callback_data=f'quality_240_{rowid}'),
+            InlineKeyboardButton(t(user.id, 'quality_144'), callback_data=f'quality_144_{rowid}'),
+            InlineKeyboardButton(t(user.id, 'quality_240'), callback_data=f'quality_240_{rowid}'),
         ],
         [
-            InlineKeyboardButton("📹 360p (обычно)", callback_data=f'quality_360_{rowid}'),
-            InlineKeyboardButton("🎬 HD (лучше)", callback_data=f'quality_hd_{rowid}'),
+            InlineKeyboardButton(t(user.id, 'quality_360'), callback_data=f'quality_360_{rowid}'),
+            InlineKeyboardButton(t(user.id, 'quality_hd'), callback_data=f'quality_hd_{rowid}'),
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text('Выберите качество:', reply_markup=reply_markup)
+    await update.message.reply_text(t(user.id, 'choose_quality'), reply_markup=reply_markup)
 
 
 async def quality_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -301,7 +396,9 @@ def main():
     
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('help', help_cmd))
+    app.add_handler(CommandHandler('language', language_cmd))
     app.add_handler(CommandHandler('history', history_cmd))
+    app.add_handler(CallbackQueryHandler(language_callback, pattern=r'lang_'))
     app.add_handler(CallbackQueryHandler(quality_callback, pattern=r'quality_'))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
