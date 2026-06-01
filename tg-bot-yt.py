@@ -632,7 +632,46 @@ async def download_and_send(url, query, context: ContextTypes.DEFAULT_TYPE, rowi
             msg = t(query.from_user.id, 'error_unavailable')
         else:
             msg = f'❌ {t(query.from_user.id, "error_general", error=str(e)[:80])}'
-        
+
+        if ('sign in to confirm' in error_msg
+                or 'use --cookies' in error_msg
+                or 'login required' in error_msg
+                or 'this video is available only to signed-in users' in error_msg
+                or 'authorization required' in error_msg) and not YTDLP_COOKIES:
+            logger.warning('Detected cookie-like error, retrying with fallback download options')
+            fallback_opts = ydl_opts.copy()
+            fallback_opts['format'] = 'best[ext=mp4]/best'
+            try:
+                with YoutubeDL(fallback_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    filepath = ydl.prepare_filename(info)
+                if os.path.exists(filepath):
+                    size = os.path.getsize(filepath)
+                    title = info.get('title', 'Video')
+                    await context.bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        text=f'📤 Загружаю "{title[:30]}"... ({size // (1024*1024)}MB)'
+                    )
+                    with open(filepath, 'rb') as media_file:
+                        if quality == 'audio':
+                            await context.bot.send_audio(
+                                chat_id=chat_id,
+                                audio=media_file,
+                                caption=f'✅ {title[:60]}\n📊 {size // (1024*1024)}MB | audio'
+                            )
+                        else:
+                            await context.bot.send_video(
+                                chat_id=chat_id,
+                                video=media_file,
+                                caption=f'✅ {title[:60]}\n📊 {size // (1024*1024)}MB | {quality}p'
+                            )
+                    update_history(rowid, 'done', os.path.basename(filepath), quality=quality)
+                    await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+                    return
+            except Exception as fallback_e:
+                logger.warning(f'Fallback download failed: {fallback_e}')
+
         await context.bot.send_message(chat_id=chat_id, text=msg)
         
     finally:
