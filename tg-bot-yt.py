@@ -619,27 +619,19 @@ async def download_and_send(url, query, context: ContextTypes.DEFAULT_TYPE, rowi
         update_history(rowid, 'failed', quality=quality)
         
         error_msg = str(e).lower()
-        # Only treat specific yt-dlp messages as requiring cookies
-        if ('sign in to confirm' in error_msg
-                or 'use --cookies' in error_msg
-                or 'login required' in error_msg
-                or 'this video is available only to signed-in users' in error_msg
-                or 'authorization required' in error_msg):
-            msg = t(query.from_user.id, 'error_requires_cookies')
-        elif 'timed out' in error_msg or 'timeout' in error_msg:
-            msg = t(query.from_user.id, 'error_timeout')
-        elif 'not available' in error_msg:
-            msg = t(query.from_user.id, 'error_unavailable')
-        else:
-            msg = f'❌ {t(query.from_user.id, "error_general", error=str(e)[:80])}'
-
-        if ('sign in to confirm' in error_msg
-                or 'use --cookies' in error_msg
-                or 'login required' in error_msg
-                or 'this video is available only to signed-in users' in error_msg
-                or 'authorization required' in error_msg) and not YTDLP_COOKIES:
-            logger.warning('Detected cookie-like error, retrying with fallback download options')
+        cookie_error = (
+            'sign in to confirm' in error_msg
+            or 'use --cookies' in error_msg
+            or 'login required' in error_msg
+            or 'this video is available only to signed-in users' in error_msg
+            or 'authorization required' in error_msg
+        )
+        
+        if cookie_error:
+            logger.warning('Detected cookie-like error, retrying without cookies and with fallback format')
             fallback_opts = ydl_opts.copy()
+            if 'cookiefile' in fallback_opts:
+                del fallback_opts['cookiefile']
             fallback_opts['format'] = 'best[ext=mp4]/best'
             try:
                 with YoutubeDL(fallback_opts) as ydl:
@@ -671,6 +663,23 @@ async def download_and_send(url, query, context: ContextTypes.DEFAULT_TYPE, rowi
                     return
             except Exception as fallback_e:
                 logger.warning(f'Fallback download failed: {fallback_e}')
+                error_msg = str(fallback_e).lower()
+                cookie_error = (
+                    'sign in to confirm' in error_msg
+                    or 'use --cookies' in error_msg
+                    or 'login required' in error_msg
+                    or 'this video is available only to signed-in users' in error_msg
+                    or 'authorization required' in error_msg
+                )
+        
+        if 'timed out' in error_msg or 'timeout' in error_msg:
+            msg = t(query.from_user.id, 'error_timeout')
+        elif 'not available' in error_msg:
+            msg = t(query.from_user.id, 'error_unavailable')
+        elif cookie_error:
+            msg = t(query.from_user.id, 'error_requires_cookies')
+        else:
+            msg = f'❌ {t(query.from_user.id, "error_general", error=str(e)[:80])}'
 
         await context.bot.send_message(chat_id=chat_id, text=msg)
         
