@@ -236,7 +236,7 @@ TRANSLATIONS = {
         'quality_360': '📹 360p (обычно)',
         'quality_hd': '🎬 HD (лучше)',
         'quality_audio': '🎵 Аудио (m4a)',
-        'error_requires_cookies': '🔐 Видео требует вход в аккаунт. Добавьте куки через YTDLP_COOKIES_FILE, чтобы скачать.',
+        'error_requires_cookies': '🔐 Видео требует вход в аккаунт. Добавьте куки через переменную окружения YTDLP_COOKIES, чтобы скачать.',
         'access_required': '🔒 Доступ к боту ограничен!\n\nДля получения полного доступа отправьте код приглашения:\n/code <ваш_код>\n\nПример: /code ABC123',
         'code_accepted': '✅ Код принят! Теперь у вас есть полный доступ ко всем функциям бота.',
         'code_invalid': '❌ Неверный код доступа.',
@@ -268,7 +268,7 @@ TRANSLATIONS = {
         'quality_360': '📹 360p (normal)',
         'quality_hd': '🎬 HD (better)',
         'quality_audio': '🎵 Audio (m4a)',
-        'error_requires_cookies': '🔐 This video requires login. Add cookies via YTDLP_COOKIES_FILE to download.',
+        'error_requires_cookies': '🔐 This video requires login. Add cookies via the YTDLP_COOKIES env variable to download.',
         'access_required': '🔒 Bot access is restricted!\n\nTo get full access, send your invitation code:\n/code <your_code>\n\nExample: /code ABC123',
         'code_accepted': '✅ Code accepted! You now have full access to all bot features.',
         'code_invalid': '❌ Invalid access code.',
@@ -300,7 +300,7 @@ TRANSLATIONS = {
         'quality_360': '📹 360p (звичайне)',
         'quality_hd': '🎬 HD (найкраще)',
         'quality_audio': '🎵 Аудіо (m4a)',
-        'error_requires_cookies': '🔐 Відео вимагає входу в акаунт. Додайте куки через YTDLP_COOKIES_FILE, щоб завантажити.',
+        'error_requires_cookies': '🔐 Відео вимагає входу в акаунт. Додайте куки через змінну оточення YTDLP_COOKIES, щоб завантажити.',
         'access_required': '🔒 Доступ до бота обмежений!\n\nДля отримання повного доступу надішліть код запрошення:\n/code <ваш_код>\n\nПриклад: /code ABC123',
         'code_accepted': '✅ Код прийнято! Тепер у вас є повний доступ до всіх функцій бота.',
         'code_invalid': '❌ Невірний код доступу.',
@@ -409,7 +409,7 @@ async def language_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Эта команда доступна всем (даже неавторизованным)
     keyboard = [
         [InlineKeyboardButton('Русский', callback_data=f'lang_ru_{user.id}')],
-        [InlineKeyboardButton('Українська', callback_data=f'lang_ua_{user.id}')],
+        [InlineKeyboardButton('🇺🇦 Українська', callback_data=f'lang_ua_{user.id}')],
         [InlineKeyboardButton('🇬🇧 English', callback_data=f'lang_en_{user.id}')],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -619,7 +619,12 @@ async def download_and_send(url, query, context: ContextTypes.DEFAULT_TYPE, rowi
         update_history(rowid, 'failed', quality=quality)
         
         error_msg = str(e).lower()
-        if 'sign in to confirm' in error_msg or 'use --cookies' in error_msg or 'cookie' in error_msg:
+        # Only treat specific yt-dlp messages as requiring cookies
+        if ('sign in to confirm' in error_msg
+                or 'use --cookies' in error_msg
+                or 'login required' in error_msg
+                or 'this video is available only to signed-in users' in error_msg
+                or 'authorization required' in error_msg):
             msg = t(query.from_user.id, 'error_requires_cookies')
         elif 'timed out' in error_msg or 'timeout' in error_msg:
             msg = t(query.from_user.id, 'error_timeout')
