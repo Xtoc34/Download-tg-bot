@@ -230,13 +230,13 @@ TRANSLATIONS = {
         'error_timeout': '⏱️ Истёк лимит времени. Попробуйте 360p или позже.',
         'error_unavailable': '🔒 Видео недоступно (приватное, удалено или по геоблоку).',
         'error_general': '❌ Ошибка: {error}',
-        'language_set': 'Язык изменён на Русский 🇷🇺',
+        'language_set': 'Язык изменён на Русский',
         'quality_144': '🟢 144p (мини)',
         'quality_240': '⚡ 240p (быстро)',
         'quality_360': '📹 360p (обычно)',
         'quality_hd': '🎬 HD (лучше)',
         'quality_audio': '🎵 Аудио (m4a)',
-        'error_requires_cookies': '🔐 Видео требует вход в аккаунт. Добавьте YTDLP_COOKIES в переменные окружения, чтобы скачать.',
+        'error_requires_cookies': '🔐 Видео требует вход в аккаунт. Добавьте куки через YTDLP_COOKIES_FILE, чтобы скачать.',
         'access_required': '🔒 Доступ к боту ограничен!\n\nДля получения полного доступа отправьте код приглашения:\n/code <ваш_код>\n\nПример: /code ABC123',
         'code_accepted': '✅ Код принят! Теперь у вас есть полный доступ ко всем функциям бота.',
         'code_invalid': '❌ Неверный код доступа.',
@@ -268,7 +268,7 @@ TRANSLATIONS = {
         'quality_360': '📹 360p (normal)',
         'quality_hd': '🎬 HD (better)',
         'quality_audio': '🎵 Audio (m4a)',
-        'error_requires_cookies': '🔐 This video requires login. Add YTDLP_COOKIES env variable to download.',
+        'error_requires_cookies': '🔐 This video requires login. Add cookies via YTDLP_COOKIES_FILE to download.',
         'access_required': '🔒 Bot access is restricted!\n\nTo get full access, send your invitation code:\n/code <your_code>\n\nExample: /code ABC123',
         'code_accepted': '✅ Code accepted! You now have full access to all bot features.',
         'code_invalid': '❌ Invalid access code.',
@@ -277,6 +277,38 @@ TRANSLATIONS = {
         'code_created': '✅ New access code created: {code}',
         'code_deactivated': '✅ Access code deactivated.',
         'not_admin': '❌ You do not have admin privileges.',
+    },
+    'ua': {
+        'hello': 'Привіт! 👋 Я завантажую відео з YouTube, Instagram, TikTok та інших сайтів.\n\nПросто надішліть мені посилання, оберіть якість — і отримаєте відео!\n\nКоманди:\n/history — переглянути історію завантажень\n/help — довідка\n/language — обрати мову',
+        'help_intro': '📌 Як користуватися:',
+        'help_text': '1. Надішліть посилання (YouTube, Instagram, TikTok тощо)\n2. Оберіть якість:\n   🟢 144p — найлегший\n   ⚡ 240p — швидко\n   📹 360p — звичайне\n   🎬 HD — найкраще\n   🎵 Аудіо — тільки звук\n3. Чекайте завантаження 📥',
+        'limit': '⚠️ Ліміт Telegram: макс 50MB за раз',
+        'support_text': 'Підтримка / Support',
+        'choose_quality': 'Оберіть якість:',
+        'empty_history': 'Історія порожня.',
+        'history_title': '📋 Ваша історія (останні 15):',
+        'invalid_url': '❌ Будь ласка, надішліть посилання (YouTube, Instagram, TikTok тощо).',
+        'downloading': '⏳ Завантажую відео ({quality}p)...',
+        'uploading': '📤 Завантажую "{title}"... ({size}MB)',
+        'file_too_large': '⚠️ Файл {size}MB занадто великий (ліміт 50MB).\nПосилання для прямого завантаження:\n{url}',
+        'error_timeout': '⏱️ Вичерпано ліміт часу. Спробуйте 360p або пізніше.',
+        'error_unavailable': '🔒 Відео недоступне (приватне, видалене або геоблоковане).',
+        'error_general': '❌ Помилка: {error}',
+        'language_set': 'Мову змінено на Українську 🇺🇦',
+        'quality_144': '🟢 144p (міні)',
+        'quality_240': '⚡ 240p (швидко)',
+        'quality_360': '📹 360p (звичайне)',
+        'quality_hd': '🎬 HD (найкраще)',
+        'quality_audio': '🎵 Аудіо (m4a)',
+        'error_requires_cookies': '🔐 Відео вимагає входу в акаунт. Додайте куки через YTDLP_COOKIES_FILE, щоб завантажити.',
+        'access_required': '🔒 Доступ до бота обмежений!\n\nДля отримання повного доступу надішліть код запрошення:\n/code <ваш_код>\n\nПриклад: /code ABC123',
+        'code_accepted': '✅ Код прийнято! Тепер у вас є повний доступ до всіх функцій бота.',
+        'code_invalid': '❌ Невірний код доступу.',
+        'admin_stats': '📊 Статистика бота:',
+        'admin_codes': '📝 Активні коди доступу:',
+        'code_created': '✅ Створено новий код доступу: {code}',
+        'code_deactivated': '✅ Код доступу деактивовано.',
+        'not_admin': '❌ У вас немає прав адміністратора.',
     }
 }
 
@@ -377,11 +409,12 @@ async def language_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Эта команда доступна всем (даже неавторизованным)
     keyboard = [
         [InlineKeyboardButton('Русский', callback_data=f'lang_ru_{user.id}')],
+        [InlineKeyboardButton('Українська', callback_data=f'lang_ua_{user.id}')],
         [InlineKeyboardButton('🇬🇧 English', callback_data=f'lang_en_{user.id}')],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     current_lang = get_user_language(user.id)
-    msg = f'Current language / Текущий язык: {current_lang}\n\nChoose / Выберите:'
+    msg = f'Current language / Поточна мова / Текущий язык: {current_lang}\n\nChoose / Обрати / Выберите:'
     await update.message.reply_text(msg, reply_markup=reply_markup)
 
 
@@ -500,14 +533,9 @@ async def download_and_send(url, query, context: ContextTypes.DEFAULT_TYPE, rowi
         'outtmpl': os.path.join(tempdir, '%(id)s.%(ext)s'),
         'noplaylist': True,
         'quiet': False,
-        'no_warnings': True,
         'socket_timeout': 60,
         'http_chunk_size': 1024 * 1024,
         'throttledratelimit': 100 * 1024,
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-            'Referer': 'https://www.youtube.com/'
-        },
     }
 
     if YTDLP_COOKIES:
@@ -591,7 +619,7 @@ async def download_and_send(url, query, context: ContextTypes.DEFAULT_TYPE, rowi
         update_history(rowid, 'failed', quality=quality)
         
         error_msg = str(e).lower()
-        if 'sign in to confirm' in error_msg or 'use --cookies' in error_msg or 'login required' in error_msg or ('cookie' in error_msg and 'youtube' in error_msg):
+        if 'sign in to confirm' in error_msg or 'use --cookies' in error_msg or 'cookie' in error_msg:
             msg = t(query.from_user.id, 'error_requires_cookies')
         elif 'timed out' in error_msg or 'timeout' in error_msg:
             msg = t(query.from_user.id, 'error_timeout')
@@ -644,7 +672,9 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     stats = get_user_stats()
     
-    stats_text = f"""{t(user_id, 'admin_stats')}
+    # Admin messages should always be in Russian
+    ru = TRANSLATIONS['ru']
+    stats_text = f"""{ru['admin_stats']}
 
 👥 Пользователи:
    Всего авторизовано: {stats['total_users']}
