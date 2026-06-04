@@ -81,11 +81,7 @@ async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(t(user_id, 'language_set'))
 
 
-@requires_auth
-async def history_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /history command - disabled"""
-    user = update.effective_user
-    await update.message.reply_text('📋 История запросов отключена.')
+
 
 
 @requires_auth

@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from config import DB_PATH
 
 
@@ -23,8 +23,14 @@ def init_db():
         is_authorized INTEGER DEFAULT 0,
         first_seen TEXT,
         last_active TEXT,
-        request_count INTEGER DEFAULT 0
+        request_count INTEGER DEFAULT 0,
+        authorized_until TEXT
     )''')
+    # Добавляем колонку authorized_until если её нет
+    try:
+        cur.execute('ALTER TABLE user_settings ADD COLUMN authorized_until TEXT')
+    except:
+        pass
     cur.execute('''CREATE TABLE IF NOT EXISTS access_codes (
         code TEXT PRIMARY KEY,
         created_at TEXT,
@@ -61,26 +67,39 @@ def set_user_language(user_id, lang):
 
 
 def is_user_authorized(user_id):
-    """Check if user is authorized"""
+    """Check if user is authorized and not expired"""
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
-    cur.execute('SELECT is_authorized FROM user_settings WHERE user_id = ?', (user_id,))
+    cur.execute('SELECT is_authorized, authorized_until FROM user_settings WHERE user_id = ?', (user_id,))
     row = cur.fetchone()
     conn.close()
-    return row[0] == 1 if row else False
+    
+    if not row or row[0] != 1:
+        return False
+    
+    # Проверяем дату истечения
+    if row[1]:
+        expires_at = datetime.fromisoformat(row[1])
+        if datetime.utcnow() > expires_at:
+            # Авторизация истекла
+            return False
+    
+    return True
 
 
 def authorize_user(user_id, username=None):
-    """Authorize a user"""
+    """Authorize a user (valid for 1 week)"""
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     now = datetime.utcnow().isoformat()
+    # Дата истечения: текущее время + 7 дней
+    expires_at = (datetime.utcnow() + timedelta(days=7)).isoformat()
     cur.execute('''INSERT OR REPLACE INTO user_settings 
-                   (user_id, language, is_authorized, first_seen, last_active, request_count) 
+                   (user_id, language, is_authorized, first_seen, last_active, request_count, authorized_until) 
                    VALUES (?, COALESCE((SELECT language FROM user_settings WHERE user_id = ?), 'ru'), 1, 
                    COALESCE((SELECT first_seen FROM user_settings WHERE user_id = ?), ?), ?, 
-                   COALESCE((SELECT request_count FROM user_settings WHERE user_id = ?), 0))''',
-                (user_id, user_id, user_id, now, now, user_id))
+                   COALESCE((SELECT request_count FROM user_settings WHERE user_id = ?), 0), ?)''',
+                (user_id, user_id, user_id, now, now, user_id, expires_at))
     conn.commit()
     conn.close()
 

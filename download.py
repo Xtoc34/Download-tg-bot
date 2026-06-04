@@ -254,7 +254,12 @@ async def download_and_send(url, query, context: ContextTypes.DEFAULT_TYPE, rowi
             elif 'timed out' in error_msg or 'timeout' in error_msg:
                 msg = '⏱️ Истёк timeout при скачивании. Видео слишком большое или медленный интернет'
             elif 'sign in' in error_msg or 'login required' in error_msg or 'authorization' in error_msg:
-                msg = '🔑 Требуется вход в аккаунт (попробуйте другое видео)'
+                msg = '🔑 Видео требует вход в аккаунт\n\n'
+                msg += 'Решение:\n'
+                msg += '1. Экспортируйте cookies из браузера (расширение EditThisCookie)\n'
+                msg += '2. Отправьте их администратору бота\n'
+                msg += '3. Администратор добавит cookies в переменную YTDLP_COOKIES\n\n'
+                msg += 'Попробуйте другое видео'
             elif 'geoblocked' in error_msg or 'geo-blocked' in error_msg or 'not available in your country' in error_msg:
                 msg = '🌍 Видео недоступно в вашей стране'
             elif 'too many requests' in error_msg or '429' in error_msg or 'rate limit' in error_msg:

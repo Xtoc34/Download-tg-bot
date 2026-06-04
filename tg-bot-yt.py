@@ -18,7 +18,7 @@ from database import init_db, create_access_code
 
 # Import handlers
 from handlers import (
-    start, help_cmd, language_cmd, language_callback, history_cmd,
+    start, help_cmd, language_cmd, language_callback,
     handle_message, quality_callback, code_cmd, stats_cmd,
     create_code_cmd, list_codes_cmd, deactivate_code_cmd
 )
@@ -69,7 +69,6 @@ def main():
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('help', help_cmd))
     app.add_handler(CommandHandler('language', language_cmd))
-    app.add_handler(CommandHandler('history', history_cmd))
     app.add_handler(CommandHandler('code', code_cmd))
     app.add_handler(CommandHandler('stats', stats_cmd))
     app.add_handler(CommandHandler('create_code', create_code_cmd))
