@@ -83,21 +83,9 @@ async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @requires_auth
 async def history_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /history command"""
+    """Handle /history command - disabled"""
     user = update.effective_user
-    rows = get_history_for_user(user.id)
-    if not rows:
-        await update.message.reply_text(t(user.id, 'empty_history'))
-        return
-    lines = []
-    for r in rows:
-        rid, url, ts, status, filename, quality = r
-        short_url = truncate_text(url, 40)
-        quality_str = quality if quality else '-'
-        suffix = 'p' if quality_str and quality_str.isdigit() else ''
-        lines.append(f'[{rid}] {status.upper()} | {quality_str}{suffix}\n{short_url}\n{ts[:10]}\n')
-    text = '\n'.join(lines[:15])
-    await update.message.reply_text(f'{t(user.id, "history_title")}\n\n{text}')
+    await update.message.reply_text('📋 История запросов отключена.')
 
 
 @requires_auth

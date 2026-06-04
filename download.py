@@ -264,7 +264,7 @@ async def download_and_send(url, query, context: ContextTypes.DEFAULT_TYPE, rowi
             elif 'connection' in error_msg or 'network' in error_msg or 'http error' in error_msg:
                 msg = '🌐 Ошибка сети. Проверьте интернет и попробуйте ещё раз'
             else:
-                msg = f'❌ Ошибка скачивания: {error_msg[:80]}'
+                msg = f'❌ Ошибка скачивания видео.\n\nПопробуйте другое видео или воспользуйтесь ссылкой напрямую.'
             
             logger.error(f'📛 Финальная ошибка: {last_error}')
             update_history(rowid, 'failed', quality=quality)
@@ -289,14 +289,10 @@ async def download_and_send(url, query, context: ContextTypes.DEFAULT_TYPE, rowi
             # Добавляем кнопку для прямого скачивания если есть URL
             if video_url:
                 keyboard.append([InlineKeyboardButton('⬇️ Скачать видео', url=video_url)])
+            else:
+                msg_text += '\n\n❌ Не удалось получить прямую ссылку на видео.'
             
-            # Альтернативные опции
-            keyboard.extend([
-                [InlineKeyboardButton('🎥 Качество 360p', callback_data=f'quality_360_{rowid}')],
-                [InlineKeyboardButton('🎵 Только аудио', callback_data=f'quality_audio_{rowid}')]
-            ])
-            
-            reply_markup = InlineKeyboardMarkup(keyboard)
+            reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
             
             update_history(rowid, 'too_large', quality=quality)
             await context.bot.send_message(chat_id=chat_id, text=msg_text, reply_markup=reply_markup)
