@@ -1,8 +1,30 @@
-runtime.txt
-*.pyc
+# Node.js (зависимости JavaScript)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Базы данных (если используете SQLite кроме history.db)
+*.db
+*.sqlite3
+
+# Настройки самого редактора VS Code
+.vscode/
+
+# Секретные файлы (на случай, если .env будет с расширениями)
+.env.*
+!.env.example
+
+# Кэш тестов и сборщиков
+.pytest_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
 __pycache__/
-.env
-history.db
-downloads/
 venv/
-.DS_Store
+downloads/
+cookies_youtube.txt

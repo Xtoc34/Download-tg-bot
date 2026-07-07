@@ -144,9 +144,6 @@ def get_ydl_options(quality, tempdir, use_cookies=True, user_agent_idx=0, use_fa
     if YTDLP_PROXY:
         ydl_opts['proxy'] = YTDLP_PROXY
     
-    # Удаляем None значения
-    ydl_opts = {k: v for k, v in ydl_opts.items() if v is not None}
-    
     # Добавляем cookies если есть
     if use_cookies and YTDLP_COOKIES:
         cookies_path = os.path.join(tempdir, 'cookies.txt')
@@ -154,9 +151,12 @@ def get_ydl_options(quality, tempdir, use_cookies=True, user_agent_idx=0, use_fa
             with open(cookies_path, 'w', encoding='utf-8') as f:
                 f.write(YTDLP_COOKIES)
             ydl_opts['cookiefile'] = cookies_path
-            logger.info('✅ Cookies загружены из переменной окружения')
+            logger.info('✅ Cookies загружены и готовы к использованию')
         except Exception as e:
-            logger.warning(f'⚠️ Ошибка при загрузке cookies: {e}')
+            logger.warning(f'⚠️ Ошибка при подготовке cookies: {e}')
+    
+    # Удаляем None значения
+    ydl_opts = {k: v for k, v in ydl_opts.items() if v is not None}
     
     return ydl_opts
 
